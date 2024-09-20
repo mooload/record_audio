@@ -38,6 +38,9 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
   bool isRecording = false; // State for toggling icon
   String filePath = '';
   String jsonPath = '';
+  double frequency = 0.0;
+  double amplitude = 0.0;
+  double decibel = 0.0;
 
   @override
   void initState() {
@@ -91,8 +94,9 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
 
   Future<void> _stopRecording() async {
     await _recorder.stopRecorder();
-    print("file saved: $jsonPath");
-    print("Recording started: $filePath");
+
+    await verifyRecording(filePath);
+    await verifyJsonFile(jsonPath);
     // print('Frequency: Hz');
     // print('Amplitude: ');
     // print('Decibel:  dB');
@@ -100,26 +104,102 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
       isRecording = false;
     });
 
-    // Setelah rekaman selesai, ekstrak data audio
+    // Extract audio data
     File recordedFile = File(filePath);
     Uint8List audioData = await recordedFile.readAsBytes();
     Map<String, dynamic> audioInfo = await extractAudioData(audioData);
-
-    // Simpan ke dalam JSON
+    // Save to JSON file
     await saveAudioDataToJson(audioInfo);
+    setState(() {
+      frequency = audioInfo['frequency'];
+      amplitude = audioInfo['amplitude'];
+      decibel = audioInfo['decibel'];
+    });
+  }
+  Future<void> verifyRecording(String filePath) async {
+    File audioFile = File(filePath);
+
+    // Cek apakah file ada
+    if (await audioFile.exists()) {
+      // Cek ukuran file
+      int fileSize = await audioFile.length();
+
+      if (fileSize > 0) {
+        print('Recording successful. File saved at $filePath with size $fileSize bytes');
+      } else {
+        print('Recording failed. The file is empty.');
+      }
+    } else {
+      print('Recording failed. No file found at $filePath.');
+    }
   }
 
+  Future<void> verifyJsonFile(String jsonPath) async {
+    File jsonFile = File(jsonPath);
+
+    // Cek apakah file JSON ada
+    if (await jsonFile.exists()) {
+      // Cek ukuran file
+      int fileSize = await jsonFile.length();
+
+      if (fileSize > 0) {
+        // Membaca isi file JSON untuk verifikasi tambahan
+        String jsonData = await jsonFile.readAsString();
+        print('JSON file saved successfully. Path: $jsonPath');
+        print('File size: $fileSize bytes');
+        print('File content: $jsonData');
+      } else {
+        print('JSON file exists, but it is empty.');
+      }
+    } else {
+      print('Failed to save JSON file. No file found at $jsonPath.');
+    }
+  }
+
+
   Future<Map<String, dynamic>> extractAudioData(Uint8List audioData) async {
-    List<double> audioList = audioData.map((byte) => byte.toDouble()).toList();
+    // Konversi Uint8List ke List<int> (asumsi 16-bit PCM)
+    List<int> audioListInt = [];
+    for (int i = 0; i < audioData.length; i += 2) {
+      int value = (audioData[i + 1] << 8) | audioData[i];
+      if (value >= 0x8000) value -= 0x10000;
+      audioListInt.add(value);
+    }
+
+    // Konversi ke List<double>
+    List<double> audioList = audioListInt.map((e) => e.toDouble()).toList();
+
+    // Hilangkan komponen DC (mean removal)
+    double mean = audioList.reduce((a, b) => a + b) / audioList.length;
+    audioList = audioList.map((v) => v - mean).toList();
+
+    // Normalisasi amplitudo
+    double maxAbsVal = audioList.map((v) => v.abs()).reduce((a, b) => a > b ? a : b);
+    if (maxAbsVal > 0) {
+      audioList = audioList.map((v) => v / maxAbsVal).toList();
+    }
+
+    // FFT
     final fft = FFT(audioList.length);
     final freqs = fft.realFft(audioList);
 
-    List<double> freqsDouble = freqs.map((f) => f.x).toList();
+    // Hitung magnitudo spektral (menggabungkan komponen real dan imajiner)
+    List<double> freqsDouble = freqs.map((f) => sqrt(f.x * f.x + f.y * f.y)).toList();
     double maxAmplitude = freqsDouble.reduce((curr, next) => curr.abs() > next.abs() ? curr : next);
     int maxFreqIndex = freqsDouble.indexOf(maxAmplitude);
-    double dominantFreq = maxFreqIndex * (44100 / audioList.length);
 
-    double decibel = 20 * (log(maxAmplitude) / log(10));
+    // Hitung frekuensi dominan
+    double dominantFreq = (maxFreqIndex * 44100) / (audioList.length / 2); // Bagi dengan 2 karena simetri FFT
+
+    // Batasi nilai amplitude minimum agar tidak nol atau terlalu kecil
+    double minAmplitude = 1e-10;
+    maxAmplitude = maxAmplitude.abs();
+    if (maxAmplitude < minAmplitude) {
+      maxAmplitude = minAmplitude;
+    }
+
+    // Hitung decibel
+    double decibel = 20 * log(maxAmplitude) / log(10);
 
     return {
       'frequency': dominantFreq,
@@ -142,23 +222,42 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Audio Recorder'),
+        backgroundColor: Colors.grey,
       ),
       body: Center(
-        child: GestureDetector(
-          onTap: isRecording ? null : _startRecording,
-          child: Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: isRecording ? Colors.red : Colors.brown,
-              shape: BoxShape.circle,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            GestureDetector(
+              onTap: isRecording ? null : _startRecording,
+              child: Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: isRecording ? Colors.red : Colors.brown,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isRecording ? Icons.mic : Icons.mic_off,
+                  color: Colors.white,
+                  size: 40,
+                ),
+              ),
             ),
-            child: Icon(
-              isRecording ? Icons.mic : Icons.mic_off,
-              color: Colors.white,
-              size: 40,
+            SizedBox(height: 20),
+            Text(
+              'Frequency: ${frequency.toStringAsFixed(2)} Hz',
+              style: TextStyle(fontSize: 18),
             ),
-          ),
+            Text(
+              'Amplitude: ${amplitude.toStringAsFixed(2)}',
+              style: TextStyle(fontSize: 18),
+            ),
+            Text(
+              'Decibel: ${decibel.toStringAsFixed(2)} dB',
+              style: TextStyle(fontSize: 18),
+            ),
+          ],
         ),
       ),
     );

@@ -61,8 +61,8 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
   Future<void> _startRecording() async {
     try {
       // Dapatkan direktori penyimpanan aplikasi
-      Directory appDir = await getApplicationDocumentsDirectory();
-      filePath = '${appDir.path}/audio_record.aac';
+      Directory? appDir = await getExternalStorageDirectory();
+      filePath = '${appDir?.path}/audio_record.aac';
 
       // Memeriksa dan meminta izin mikrofon
       var status = await Permission.microphone.request();
@@ -84,7 +84,7 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
       print("Recording started: $filePath");
 
       // Rekam selama 5 detik
-      Timer(Duration(seconds: 5), () async {
+      Timer(Duration(seconds: 3), () async {
         await _stopRecording();
       });
     } catch (e) {
@@ -133,6 +133,7 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
       print('Recording failed. No file found at $filePath.');
     }
   }
+
 
   Future<void> verifyJsonFile(String jsonPath) async {
     File jsonFile = File(jsonPath);
@@ -209,8 +210,8 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
   }
 
   Future<void> saveAudioDataToJson(Map<String, dynamic> audioData) async {
-    Directory appDir = await getApplicationDocumentsDirectory();
-    jsonPath = '${appDir.path}/audio_data_tolong.json';
+    Directory? appDir = await getExternalStorageDirectory();
+    jsonPath = '${appDir?.path}/audio_data_tolong.json';
     File jsonFile = File(jsonPath);
 
     String jsonString = jsonEncode(audioData);
@@ -222,7 +223,7 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Audio Recorder'),
-        backgroundColor: Colors.grey,
+        backgroundColor: Colors.brown[200],
       ),
       body: Center(
         child: Column(
@@ -234,7 +235,7 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
                 width: 80,
                 height: 80,
                 decoration: BoxDecoration(
-                  color: isRecording ? Colors.red : Colors.brown,
+                  color: isRecording ? Colors.red : Colors.brown[400],
                   shape: BoxShape.circle,
                 ),
                 child: Icon(

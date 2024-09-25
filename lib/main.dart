@@ -3,6 +3,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:fftea/fftea.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:scidart/numdart.dart'; // for matrix operations (like DCT)
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
@@ -35,17 +36,22 @@ class AudioRecorderHome extends StatefulWidget {
 
 class _AudioRecorderHomeState extends State<AudioRecorderHome> {
   FlutterSoundRecorder _recorder = FlutterSoundRecorder();
+
   bool isRecording = false; // State for toggling icon
   String filePath = '';
   String jsonPath = '';
   double frequency = 0.0;
   double amplitude = 0.0;
   double decibel = 0.0;
+  List<double> mfccs = [];
+
+
 
   @override
   void initState() {
     super.initState();
     _initializeRecorder();
+
   }
 
   Future<void> _initializeRecorder() async {
@@ -97,9 +103,7 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
 
     await verifyRecording(filePath);
     await verifyJsonFile(jsonPath);
-    // print('Frequency: Hz');
-    // print('Amplitude: ');
-    // print('Decibel:  dB');
+
     setState(() {
       isRecording = false;
     });
@@ -110,10 +114,12 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
     Map<String, dynamic> audioInfo = await extractAudioData(audioData);
     // Save to JSON file
     await saveAudioDataToJson(audioInfo);
+
     setState(() {
       frequency = audioInfo['frequency'];
       amplitude = audioInfo['amplitude'];
       decibel = audioInfo['decibel'];
+
     });
   }
   Future<void> verifyRecording(String filePath) async {
@@ -202,12 +208,66 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
     // Hitung decibel
     double decibel = 20 * log(maxAmplitude) / log(10);
 
+    // Hitung MFCC
+    List<double> mfccsResult = await calculateMFCCs(audioList, 44100, 13);
+
     return {
       'frequency': dominantFreq,
       'amplitude': maxAmplitude,
       'decibel': decibel,
+      'mfccs': mfccsResult,
+
     };
   }
+  // Implementasi manual DCT
+  List<double> dct(List<double> input) {
+    int N = input.length;
+    List<double> result = List.filled(N, 0.0);
+
+    for (int k = 0; k < N; k++) {
+      double sum = 0.0;
+      for (int n = 0; n < N; n++) {
+        sum += input[n] * cos(pi * k * (2 * n + 1) / (2 * N));
+      }
+      result[k] = sum * sqrt(2.0 / N);
+      if (k == 0) {
+        result[k] *= 1 / sqrt(2);
+      }
+    }
+    return result;
+  }
+
+// Contoh filter bank Mel sederhana
+  List<double> generateMelFilterBank(int numCoeffs, int numFreqs, int sampleRate) {
+    List<double> melFilter = List.filled(numFreqs, 0.0);
+    for (int i = 0; i < numFreqs; i++) {
+      melFilter[i] = i * sampleRate / numFreqs; // Sederhana untuk ilustrasi
+    }
+    return melFilter;
+  }
+
+  Future<List<double>> calculateMFCCs(List<double> signal, int sampleRate, int numCoeffs) async {
+    // 1. Terapkan FFT pada sinyal
+    final fft = FFT(signal.length);
+    final freqs = fft.realFft(signal);
+
+    // 2. Konversi frekuensi ke skala Mel
+    var melFilters = generateMelFilterBank(numCoeffs, freqs.length, sampleRate);
+
+    // 3. Ambil log dari energi filter bank
+    var logEnergies = melFilters.map((f) => log(f.abs() + 1e-10)).toList();
+
+    // 4. Terapkan DCT ke log Mel energies untuk mendapatkan MFCCs
+    var mfccs = dct(logEnergies);
+
+    // Batasi hasil DCT ke 13 koefisien
+    if (mfccs.length > 13) {
+      mfccs = mfccs.sublist(0, 13);
+    }
+
+    return mfccs;
+  }
+
 
   Future<void> saveAudioDataToJson(Map<String, dynamic> audioData) async {
     Directory? appDir = await getExternalStorageDirectory();
@@ -258,6 +318,7 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
               'Decibel: ${decibel.toStringAsFixed(2)} dB',
               style: TextStyle(fontSize: 18),
             ),
+
           ],
         ),
       ),

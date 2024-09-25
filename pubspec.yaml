@@ -34,7 +34,9 @@ dependencies:
   flutter_sound: ^9.16.0
   path_provider: ^2.1.4
   permission_handler: ^11.3.1
+  scidart: ^0.0.2-dev.12
   cupertino_icons: ^1.0.6
+  tflite_flutter: ^0.11.0
 
 dev_dependencies:
   flutter_test:

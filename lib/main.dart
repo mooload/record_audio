@@ -38,6 +38,7 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
   FlutterSoundRecorder _recorder = FlutterSoundRecorder();
 
   bool isRecording = false; // State for toggling icon
+  int recordingCount = 0;
   String filePath = '';
   String jsonPath = '';
   double frequency = 0.0;
@@ -66,6 +67,10 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
 
   Future<void> _startRecording() async {
     try {
+      if (recordingCount >= 5) {
+        print('maximum recording reached.');
+        return;
+      }
       // Dapatkan direktori penyimpanan aplikasi
       Directory? appDir = await getExternalStorageDirectory();
       filePath = '${appDir?.path}/audio_record.aac';
@@ -106,6 +111,7 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
 
     setState(() {
       isRecording = false;
+      recordingCount++;
     });
 
     // Extract audio data
@@ -209,7 +215,7 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
     double decibel = 20 * log(maxAmplitude) / log(10);
 
     // Hitung MFCC
-    List<double> mfccsResult = await calculateMFCCs(audioList, 44100, 13);
+    List<double> mfccsResult = await calculateMFCCs(audioList, 44100 , 13);
 
     return {
       'frequency': dominantFreq,
@@ -240,9 +246,32 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
 // Contoh filter bank Mel sederhana
   List<double> generateMelFilterBank(int numCoeffs, int numFreqs, int sampleRate) {
     List<double> melFilter = List.filled(numFreqs, 0.0);
+
+    // Mel scale conversion formulas
+    double hzToMel(double hz) => 2595 * log(1 + hz / 700);
+    double melToHz(double mel) => 700 * (exp(mel / 2595) - 1);
+
+    // Frequency boundaries for Mel filters
+    double lowMel = hzToMel(300);  // Lower cutoff frequency (e.g., 300 Hz)
+    double highMel = hzToMel(sampleRate / 2);  // Upper cutoff frequency (Nyquist frequency)
+
+    List<double> melPoints = List.generate(numCoeffs + 2,
+            (i) => melToHz(lowMel + (highMel - lowMel) * i / (numCoeffs + 1))
+    );
+
     for (int i = 0; i < numFreqs; i++) {
-      melFilter[i] = i * sampleRate / numFreqs; // Sederhana untuk ilustrasi
+      double freq = i * sampleRate / numFreqs;
+      for (int j = 1; j < melPoints.length - 1; j++) {
+        if (freq >= melPoints[j - 1] && freq <= melPoints[j + 1]) {
+          if (freq <= melPoints[j]) {
+            melFilter[i] = (freq - melPoints[j - 1]) / (melPoints[j] - melPoints[j - 1]);
+          } else {
+            melFilter[i] = (melPoints[j + 1] - freq) / (melPoints[j + 1] - melPoints[j]);
+          }
+        }
+      }
     }
+
     return melFilter;
   }
 
@@ -271,11 +300,24 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
 
   Future<void> saveAudioDataToJson(Map<String, dynamic> audioData) async {
     Directory? appDir = await getExternalStorageDirectory();
-    jsonPath = '${appDir?.path}/audio_data_tolong.json';
+    jsonPath = '${appDir?.path}/audio_data_tolong2.json';
     File jsonFile = File(jsonPath);
 
-    String jsonString = jsonEncode(audioData);
-    await jsonFile.writeAsString(jsonString);
+    // If file doesn't exist, create an empty array in JSON format
+    if (!(await jsonFile.exists())) {
+      await jsonFile.writeAsString('[]');
+    }
+
+    // Read the existing content
+    String jsonString = await jsonFile.readAsString();
+    List<dynamic> jsonData = jsonDecode(jsonString);
+
+    // Append the new audio data to the existing list
+    jsonData.add(audioData);
+
+    // Write the updated list back to the file
+    await jsonFile.writeAsString(jsonEncode(jsonData));
+    print('Appended audio data to JSON file.');
   }
 
   @override
@@ -290,7 +332,7 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
             GestureDetector(
-              onTap: isRecording ? null : _startRecording,
+              onTap: isRecording || recordingCount >= 7 ? null : _startRecording,
               child: Container(
                 width: 80,
                 height: 80,
@@ -318,7 +360,11 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
               'Decibel: ${decibel.toStringAsFixed(2)} dB',
               style: TextStyle(fontSize: 18),
             ),
-
+            SizedBox(height: 20),
+            Text(
+              'Recording ${recordingCount}/7',
+              style: TextStyle(fontSize: 18),
+            ),
           ],
         ),
       ),

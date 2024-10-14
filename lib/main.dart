@@ -1,3 +1,5 @@
+import 'dart:ffi';
+
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:fftea/fftea.dart';
@@ -8,6 +10,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:excel/excel.dart';
 import 'dart:math';
 
 void main() {
@@ -45,6 +48,7 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
   double amplitude = 0.0;
   double decibel = 0.0;
   List<double> mfccs = [];
+  List<Map<String, dynamic>> analysisResults = [];
 
 
 
@@ -67,7 +71,7 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
 
   Future<void> _startRecording() async {
     try {
-      if (recordingCount >= 5) {
+      if (recordingCount >= 10) {
         print('maximum recording reached.');
         return;
       }
@@ -95,7 +99,7 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
       print("Recording started: $filePath");
 
       // Rekam selama 5 detik
-      Timer(Duration(seconds: 3), () async {
+      Timer(Duration(seconds: 5), () async {
         await _stopRecording();
       });
     } catch (e) {
@@ -120,6 +124,14 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
     Map<String, dynamic> audioInfo = await extractAudioData(audioData);
     // Save to JSON file
     await saveAudioDataToJson(audioInfo);
+    // Tambahkan hasil analisis ke dalam analysisResults
+    analysisResults.add({
+      'file': filePath,
+      'frequency': audioInfo['frequency'],
+      'amplitude': audioInfo['amplitude'],
+      'decibel': audioInfo['decibel'],
+      'mfccs': audioInfo['mfccs'], // Tambahkan MFCCs juga
+    });
 
     setState(() {
       frequency = audioInfo['frequency'];
@@ -300,7 +312,7 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
 
   Future<void> saveAudioDataToJson(Map<String, dynamic> audioData) async {
     Directory? appDir = await getExternalStorageDirectory();
-    jsonPath = '${appDir?.path}/audio_data_tolong2.json';
+    jsonPath = '${appDir?.path}/audio_data_tolong3.json';
     File jsonFile = File(jsonPath);
 
     // If file doesn't exist, create an empty array in JSON format
@@ -320,6 +332,44 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
     print('Appended audio data to JSON file.');
   }
 
+  Future<void> exportToExcel() async {
+    var excel = Excel.createExcel();
+    Sheet sheetObject = excel['Audio Feature'];
+
+    // Menambahkan header
+    sheetObject.appendRow([
+      TextCellValue('file'),
+      TextCellValue('Frequency (Hz)'),
+      TextCellValue('Amplitude'),
+      TextCellValue('Decibel (dB)'),
+      TextCellValue('MFCCs') // Tambahkan kolom untuk MFCCs
+    ]);
+
+    // Menambahkan hasil analisis ke dalam baris excel
+    for (var result in analysisResults) {
+      sheetObject.appendRow([
+        TextCellValue(result['file']),
+        DoubleCellValue(result['frequency']),
+        DoubleCellValue(result['amplitude']),
+        DoubleCellValue(result['decibel']),
+        TextCellValue(result['mfccs'].join(", ")), // Menggabungkan MFCCs menjadi satu string
+      ]);
+    }
+
+    // Tentukan path output file
+    String outputFilePath = "/storage/emulated/0/Download/DAja3.xlsx";
+    final fileBytes = excel.save(fileName: "DAja3.xlsx");
+
+    if (fileBytes != null) {
+      final file = File(outputFilePath);
+      await file.writeAsBytes(fileBytes, flush: true);
+      print("File saved at $outputFilePath");
+    } else {
+      print("Failed to save file");
+    }
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -332,7 +382,7 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
             GestureDetector(
-              onTap: isRecording || recordingCount >= 7 ? null : _startRecording,
+              onTap: isRecording || recordingCount >= 10 ? null : _startRecording,
               child: Container(
                 width: 80,
                 height: 80,
@@ -362,8 +412,12 @@ class _AudioRecorderHomeState extends State<AudioRecorderHome> {
             ),
             SizedBox(height: 20),
             Text(
-              'Recording ${recordingCount}/7',
+              'Recording ${recordingCount}/10',
               style: TextStyle(fontSize: 18),
+            ),
+            ElevatedButton(
+                onPressed: exportToExcel,
+                child: Text('Save to Excel')
             ),
           ],
         ),

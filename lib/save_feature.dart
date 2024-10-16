@@ -11,6 +11,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
 import 'package:fftea/fftea.dart';
 import 'package:xml/xml.dart' as xml;
+import 'svcNoFreq.dart';
 
 void main() {
   runApp(MyApp());
@@ -354,8 +355,8 @@ class _SoundRecorderState extends State<SoundRecorder> {
       audioElement.children.add(xml.XmlElement(xml.XmlName('Frequency'), [], [xml.XmlText(audioData['features']['frequency'].toString())]));
       audioElement.children.add(xml.XmlElement(xml.XmlName('Amplitude'), [], [xml.XmlText(audioData['features']['amplitude'].toString())]));
       audioElement.children.add(xml.XmlElement(xml.XmlName('Decibel'), [], [xml.XmlText(audioData['features']['decibel'].toString())]));
-      List mfccValues = audioData['features']['mfcc'].take(13).toList();
-      for (var mfcc in mfccValues) {
+      // List mfccValues = audioData['features']['mfcc'].take(13).toList();
+      for (var mfcc in audioData['features']['mfcc']) {
         audioElement.children.add(xml.XmlElement(xml.XmlName('MFCC'), [], [xml.XmlText(mfcc.toString())]));
       }
 
@@ -454,24 +455,36 @@ class _SoundRecorderState extends State<SoundRecorder> {
   // ================================================
   // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
+  // List to say
+  final List<String> phrases = [
+    'say "Toloong"',
+    'say "Rumah Saya Kosong"',
+    'say "Help!"',
+    'say "Polisi Tolong Saya"',
+    'say "Bantu saya"'
+  ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('Save Features'),
+        backgroundColor: Colors.lightBlue[50],
       ),
+      backgroundColor: Colors.lightBlueAccent[50],
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
+
+            SizedBox(height: 200,),
             GestureDetector(
               onTap: _isRecording || recordingCount >= 5 ? null : _startRecording,
               child: Container(
                 width: 80,
                 height: 80,
                 decoration: BoxDecoration(
-                  color: _isRecording ? Colors.red : Colors.brown[400],
+                  color: _isRecording ? Colors.red : Colors.blueGrey[400],
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -481,24 +494,27 @@ class _SoundRecorderState extends State<SoundRecorder> {
                 ),
               ),
             ),
-            SizedBox(height: 20),
+            SizedBox(height: 50,),
             Text(
-              'Frequency: ${_frequency.toStringAsFixed(2)} Hz',
-              style: TextStyle(fontSize: 18),
+              phrases[recordingCount],
+              style: TextStyle(fontSize: 40),),
+
+            // ElevatedButton(
+            //     onPressed: () {
+            //       Navigator.push(context, MaterialPageRoute(builder: (context) => AudioAnalysisHome()),
+            //       );
+            //     },
+            //     child: Text('Go to Page SVC no Freq')
+            // ),
+            Text(
+                'Pencet tombol untuk merekam',
+              style: TextStyle(height: 3),
             ),
             Text(
-              'Amplitude: ${_amplitude.toStringAsFixed(2)}',
-              style: TextStyle(fontSize: 18),
+              'Recording ${recordingCount}/5',
+              style: TextStyle(fontSize: 18,height: 5),
             ),
-            Text(
-              'Decibel: ${_decibel.toStringAsFixed(2)} dB',
-              style: TextStyle(fontSize: 18),
-            ),
-            SizedBox(height: 20),
-            Text(
-              'Recording ${recordingCount}/10',
-              style: TextStyle(fontSize: 18),
-            ),
+            SizedBox(height: 120,)
           ],
         ),
       ),
